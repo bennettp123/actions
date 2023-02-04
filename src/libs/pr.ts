@@ -1,5 +1,6 @@
 import * as core from '@actions/core';
 import { context, getOctokit } from '@actions/github';
+import AnsiToHtml from 'ansi-to-html';
 import * as dedent from 'dedent';
 import invariant from 'ts-invariant';
 import { Config } from '../config';
@@ -20,7 +21,14 @@ export async function handlePullRequestMessage(
 
   const summary = '<summary>Pulumi report</summary>';
 
-  const rawBody = output.substring(0, 64_000);
+  const convert = new AnsiToHtml();
+  let rawBody = output;
+  let htmlBody = convert.toHtml(rawBody);
+  do {
+    rawBody = rawBody.substring(0, rawBody.length - 1);
+    htmlBody = convert.toHtml(rawBody);
+  } while (htmlBody.length > 64_000);
+
   // a line break between heading and rawBody is needed
   // otherwise the backticks won't work as intended
   const body = dedent`
@@ -29,9 +37,10 @@ export async function handlePullRequestMessage(
     <details>
     ${summary}
 
-    \`\`\`
-    ${rawBody}
-    \`\`\`
+    <pre>
+    ${htmlBody}
+    </pre>
+
     ${
       rawBody.length === 64_000
         ? '**Warn**: The output was too long and trimmed.'
@@ -53,8 +62,9 @@ export async function handlePullRequestMessage(
         ...repo,
         issue_number: nr,
       });
-      const comment = comments.find((comment) =>
-        comment.body.startsWith(heading) && comment.body.includes(summary),
+      const comment = comments.find(
+        (comment) =>
+          comment.body.startsWith(heading) && comment.body.includes(summary),
       );
 
       // If comment exists, update it.
